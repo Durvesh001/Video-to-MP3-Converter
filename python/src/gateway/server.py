@@ -1,93 +1,65 @@
-import os, gridfs, pika, json
+import json
+import os
+
+import gridfs
+from bson.objectid import ObjectId
 from flask import Flask, request, send_file
-from flask_pymongo import PyMongo
+from pymongo import MongoClient
+
 from auth import validate
 from auth_svc import access
 from storage import util
-from bson.objectid import ObjectId
 
 server = Flask(__name__)
+server.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
+mongo = MongoClient(os.getenv("MONGO_URI", "mongodb://host.minikube.internal:27017"),
+                    serverSelectionTimeoutMS=5000)
+fs_videos = gridfs.GridFS(mongo.videos)
+fs_mp3s = gridfs.GridFS(mongo.mp3s)
 
-mongo_video = PyMongo(
-        server, 
-        uri="mongodb://host.minikube.internal:27017/videos"
-    )
 
-mongo_mp3 = PyMongo(
-        server, 
-        uri="mongodb://host.minikube.internal:27017/mp3s"
-    )
+@server.get("/health")
+def health():
+    mongo.admin.command("ping")
+    return {"status": "ok"}
 
-fs_videos = gridfs.GridFS(mongo_video.db)
-fs_mp3s = gridfs.GridFS(mongo_mp3.db)
 
-connection = pika.BlockingConnection(pika.ConnectionParameters("rabbitmq"))
-channel = connection.channel()
-
-@server.route('/login', methods=['POST'])
+@server.post("/login")
 def login():
     token, err = access.login(request)
-    
-    if not err:
-        return token
-    else:
-        message, status = err
-        return message, status
+    return err if err else token
 
-@server.route('/upload', methods=['POST'])
+
+@server.post("/upload")
 def upload():
-    print("ENTERED /upload", flush=True)
-
     access_data, err = validate.token(request)
-    print("AFTER validate.token", access_data, err, flush=True)
-
     if err:
-        message, status = err
-        return message, status
-
+        return err
     access_data = json.loads(access_data)
-    print("AFTER json.loads", access_data, flush=True)
-
     if not access_data.get("admin"):
         return "Not Authorized", 401
-
-    if len(request.files) != 1:
+    files = [file for _, file in request.files.items(multi=True)]
+    if len(files) != 1:
         return "Only one file allowed", 400
-
-    for _, f in request.files.items():
-        print("CALLING util.upload()", flush=True)
-        message, status = util.upload(f, fs_videos, channel, access_data)
-        return message, status
+    return util.upload(files[0], fs_videos, None, access_data)
 
 
-@server.route("/download", methods=['GET'])
+@server.get("/download")
 def download():
-    print("ENTERED /download", flush=True)
-
     access_data, err = validate.token(request)
-    print("AFTER validate.token", access_data, err, flush=True)
-
     if err:
-        message, status = err
-        return message, status
-
-    access_data = json.loads(access_data)
-    print("AFTER json.loads", access_data, flush=True)
-
-    if not access_data.get("admin"):
+        return err
+    if not json.loads(access_data).get("admin"):
         return "Not Authorized", 401
-    
-    fid_string = request.args.get("fid")
-    if not fid_string:
-        return "Missing fid..fid is required", 400
-    
-    # file is found..send it back
+    fid = request.args.get("fid", "")
+    if not ObjectId.is_valid(fid):
+        return "A valid fid is required", 400
     try:
-        out = fs_mp3s.get(ObjectId(fid_string))
-        return send_file(out, download_name=f'{fid_string}.mp3')
-    except Exception as err:
-        print("ERROR:", err, flush=True)
-        return "Internal Server Error", 500
-    
+        result = fs_mp3s.get(ObjectId(fid))
+        return send_file(result, download_name=f"{fid}.mp3", mimetype="audio/mpeg", as_attachment=True)
+    except gridfs.errors.NoFile:
+        return "MP3 not found", 404
+
+
 if __name__ == "__main__":
-    server.run(host="0.0.0.0", port=8080) 
+    server.run(host="0.0.0.0", port=8080)

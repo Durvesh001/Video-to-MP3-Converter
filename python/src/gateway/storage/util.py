@@ -1,47 +1,29 @@
-import pika, json
+import json
+import os
+import pika
 
-def upload(f, fs, channel, access):
+
+def upload(file, fs, channel, access):
+    fid = None
+    connection = None
     try:
-        fid = fs.put(f)
-        print("Uploaded file to gridfs with fid: ", fid, flush=True)
-    except Exception as err:
-        print("Exception in putting video to gridfs: ", err, flush=True)
-        return "Internal Server Error: ", 500
-    
-    message = {
-        "video_fid": str(fid),
-        "mp3_fid": None,
-        "username": access["username"]
-    }
-    
-    try:
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(
-                host="rabbitmq",
-                heartbeat=600,
-                blocked_connection_timeout=300
-            )
-        )
-        
+        fid = fs.put(file)
+        message = {"video_fid": str(fid), "mp3_fid": None, "username": access["username"]}
+        connection = pika.BlockingConnection(pika.URLParameters(
+            os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/%2F")))
         channel = connection.channel()
-        
-        channel.queue_declare(queue="video", durable=True)
-        
+        queue = os.getenv("VIDEO_QUEUE", "video")
+        channel.queue_declare(queue=queue, durable=True)
+        channel.confirm_delivery()
         channel.basic_publish(
-            exchange = "",
-            
-            # routing_key should match the name of the queue we created in worker.py. It is the rabbitmq queue
-            routing_key = "video",
-            body = json.dumps(message),
-            properties=pika.BasicProperties(
-                delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,  # Make message persistent and the queue will still exist incase of pod crash and it comes back up 
-            ),
+            exchange="", routing_key=queue, body=json.dumps(message), mandatory=True,
+            properties=pika.BasicProperties(delivery_mode=2),
         )
-        
-        connection.close()
-
-    except Exception as err:
-        fs.delete(fid)
-        print("Exception in publishing message to rabbitmq: ", err, flush=True)
-        return "Internal Server Error: ", 500
-    return "Upload Successful", 200
+        return {"message": "Upload Successful", "video_fid": str(fid)}, 200
+    except Exception:
+        if fid is not None:
+            fs.delete(fid)
+        return "Upload failed; please retry", 503
+    finally:
+        if connection and connection.is_open:
+            connection.close()

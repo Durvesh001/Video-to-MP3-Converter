@@ -1,0 +1,13 @@
+# Compatibility for old per-user Rancher Desktop with its networking tunnel.
+# The VM needs wildcard bindings; Rancher's unprivileged Windows forwarder
+# still listens only on 127.0.0.1. Do not use with Docker Desktop/adminAccess.
+services:
+  gateway:
+    ports: !override
+      - "8080:8080"
+  mailpit:
+    ports: !override
+      - "8025:8025"
+  rabbitmq:
+    ports: !override
+      - "15672:15672"
