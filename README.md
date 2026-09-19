@@ -6,16 +6,14 @@ This is an API project; it does not include a browser upload frontend.
 
 ## Start on Windows
 
-1. Start **Docker Desktop** with Linux containers. Rancher Desktop with the
-   **Moby/dockerd** engine is also supported.
+1. Start **Docker Desktop** with Linux containers.
 2. Open PowerShell in this repository and run:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
    ```
 
-The script finds the Rancher Docker CLI even when it is absent from PATH. The
-first run downloads images and builds all four services. No host Python,
+The first run downloads images and builds all four services. No host Python,
 Minikube, host databases, old virtual environments, or Gmail account are needed.
 The Compose project is named `video-to-mp3` and uses its own database volumes.
 
@@ -30,15 +28,6 @@ All exposed ports bind to localhost. Compose credentials are intentionally
 local demo values; this setup is not a production deployment. MySQL and MongoDB
 are accessible only inside the Compose network. Mailpit captures emails locally
 and does not deliver them to real recipients.
-
-For older Rancher installations only, an optional local `.env` can select
-`compose.rancher-legacy.yaml` to work
-around an [older Rancher localhost-forwarding bug](https://github.com/rancher-sandbox/rancher-desktop/issues/7720).
-That override uses wildcard bindings inside the Linux VM; the per-user Rancher
-Windows forwarder restricts access to `127.0.0.1`. The start script checks that
-Rancher has no admin access before using it. Remove the `COMPOSE_FILE` line from
-`.env` if switching to Docker Desktop or an updated Rancher version. The base
-Compose file uses explicit localhost bindings without this compatibility layer.
 
 ## Run the complete test
 
@@ -79,13 +68,7 @@ or dead-letter storage; inspect logs and upload again after fixing the cause.
 
 ## Logs and stopping
 
-If `docker` is absent from your current PowerShell PATH, run:
-
-```powershell
-$env:PATH = "$env:LOCALAPPDATA\Programs\Rancher Desktop\resources\resources\win32\bin;$env:PATH"
-```
-
-Then use:
+Open PowerShell in the project folder and use:
 
 ```powershell
 docker compose ps
@@ -95,7 +78,7 @@ docker compose start
 ```
 
 `stop` preserves uploaded videos, converted audio, users, and queues. Starting
-Docker Desktop (or Rancher Desktop) is required after reboot. Run `scripts/start.ps1` after code
+Docker Desktop is required after reboot. Run `scripts/start.ps1` after code
 changes to rebuild. Avoid `docker compose down -v` unless you deliberately want
 to erase this project's database and queue data.
 

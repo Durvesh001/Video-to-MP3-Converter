@@ -1,11 +1,10 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
-$dockerExecutable = if ($dockerCommand) { $dockerCommand.Source } else {
-    Join-Path $env:LOCALAPPDATA 'Programs\Rancher Desktop\resources\resources\win32\bin\docker.exe'
+if (-not $dockerCommand) {
+    throw 'Docker CLI was not found. Install Docker Desktop and open a new PowerShell window.'
 }
-if (-not (Test-Path $dockerExecutable)) { throw 'Docker CLI was not found.' }
-$env:PATH = (Split-Path $dockerExecutable -Parent) + ';' + $env:PATH
+$dockerExecutable = $dockerCommand.Source
 & $dockerExecutable compose cp ./scripts/smoke_test.py gateway:/tmp/smoke_test.py
 if ($LASTEXITCODE -ne 0) { throw 'Start the project first with scripts/start.ps1.' }
 & $dockerExecutable compose cp ./python/src/converter/test.mp4 gateway:/tmp/test.mp4
